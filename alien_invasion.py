@@ -1,13 +1,15 @@
 import sys
 from random import randint
-
+from time import sleep
 import pygame
 
 from alien import Alien
 from bullet import Bullet
+from button import Button
 from settings import Settings
 from ship import Ship
 from star import Star
+from game_stats import GameStats
 
 
 class AlienInvasion:
@@ -19,6 +21,7 @@ class AlienInvasion:
         self.screen = pygame.display.set_mode((self.settings.screen_width, self.settings.screen_height))
 
         pygame.display.set_caption('Alien Invasion')
+        self.stats = GameStats(self)
         self.ship = Ship(self)
 
         self.bullets = pygame.sprite.Group()
@@ -27,15 +30,26 @@ class AlienInvasion:
 
         self._create_fleet()
         self._create_stars()
+        self.normal_button = Button(self, 'Normal', self.screen.get_rect().center)
+        midtop = self.screen.get_rect().midtop
+        self.easy_button = Button(self, 'Easy', (midtop[0], midtop[1] + 30))
+
+        midbottom = self.screen.get_rect().midbottom
+        self.hard_button = Button(self, 'Hard', (midbottom[0], midbottom[1] - 30))
 
     def run_game(self):
 
         while True:
+
             self._check_events()
-            self.ship.update()
-            self._update_bullets()
+
+            if self.stats.game_active:
+                self.ship.update()
+
+                self._update_bullets()
+                self._update_aliens()
+
             self._update_screen()
-            self._update_aliens()
 
     def _check_events(self):
         for event in pygame.event.get():
@@ -47,6 +61,9 @@ class AlienInvasion:
 
             elif event.type == pygame.KEYUP:
                 self._check_keyup_events(event)
+            elif event.type == pygame.MOUSEBUTTONDOWN:
+                mouse_pos = pygame.mouse.get_pos()
+                self._check_play_button(mouse_pos)
 
     def _check_keydown_events(self, event):
         if event.key == pygame.K_RIGHT:
@@ -57,6 +74,9 @@ class AlienInvasion:
             self._fire_bullet()
         elif event.key == pygame.K_q:
             sys.exit()
+        elif event.key == pygame.K_p:
+            if not self.stats.game_active:
+                self._start_game('normal')
 
     def _check_keyup_events(self, event):
         if event.key == pygame.K_RIGHT:
@@ -73,6 +93,12 @@ class AlienInvasion:
 
         self.aliens.draw(self.screen)
         self.stars.draw(self.screen)
+
+        if not self.stats.game_active:
+            self.normal_button.draw_button()
+            self.easy_button.draw_button()
+            self.hard_button.draw_button()
+
         pygame.display.flip()
 
     def _fire_bullet(self):
@@ -138,6 +164,11 @@ class AlienInvasion:
         self._check_fleet_edges()
         self.aliens.update()
 
+        if pygame.sprite.spritecollideany(self.ship, self.aliens):
+            self._ship_hit()
+
+        self._check_aliens_bottom()
+
     def _check_fleet_edges(self):
         for alien in self.aliens.sprites():
             if alien.check_edges():
@@ -154,6 +185,51 @@ class AlienInvasion:
         if not self.aliens:
             self.bullets.empty()
             self._create_fleet()
+            self.settings.increase_speed()
+
+    def _ship_hit(self):
+        if self.stats.ships_left > 0:
+            self.stats.ships_left -= 1
+            self.aliens.empty()
+            self.bullets.empty()
+
+            self._create_fleet()
+            self.ship.center_ship()
+            sleep(0.5)
+        else:
+            self.stats.game_active = False
+            pygame.mouse.set_visible(True)
+
+    def _check_aliens_bottom(self):
+        screen_rect = self.screen.get_rect()
+        for alien in self.aliens.sprites():
+            if alien.rect.bottom >= screen_rect.bottom:
+                self._ship_hit()
+                break
+
+    def _start_game(self, difficulty):
+        self.stats.reset_stats()
+        self.stats.game_active = True
+
+        self.aliens.empty()
+        self.bullets.empty()
+        self._create_fleet()
+        self.ship.center_ship()
+        pygame.mouse.set_visible(False)
+        self.settings.init_dynamic_settings(difficulty)
+
+    def _check_play_button(self, mouse_pos):
+        if not self.stats.game_active:
+            normal_button_clicked = self.normal_button.rect.collidepoint(mouse_pos)
+            hard_button_clicked = self.hard_button.rect.collidepoint(mouse_pos)
+            easy_button_clicked = self.easy_button.rect.collidepoint(mouse_pos)
+
+            if normal_button_clicked:
+                self._start_game('normal')
+            elif hard_button_clicked:
+                self._start_game('hard')
+            elif easy_button_clicked:
+                self._start_game('easy')
 
 
 if __name__ == '__main__':
